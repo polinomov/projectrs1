@@ -2,6 +2,8 @@ use std::fs::File;
 use std::path::Path;
 use std::io::Read;
 
+mod readers;
+
 fn main() {
   let path = Path::new("hello.txt");
   let display1 = path.display();
@@ -21,4 +23,6 @@ fn main() {
         eprintln!("Failed to read file: {}", e);
       }    
   }
+  readers::hello_readers();
+  //readers::api::say_hello();
 }
