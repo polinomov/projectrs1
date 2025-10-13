@@ -3,16 +3,16 @@ use std::path::Path;
 use std::io::Read;
 
 fn main() {
-    let path = Path::new("hello.txt");
-    let display1 = path.display();
+  let path = Path::new("hello.txt");
+  let display1 = path.display();
 
-    // Open the path in read-only mode, returns `io::Result<File>`
-    let mut file = match File::open("data/my_file.txt") {
-      Err(why) => panic!("couldn't open {}: {}", display1, why),
-      Ok(file) => file,
-    };
+  // Open the path in read-only mode, returns `io::Result<File>`
+  let mut file = match File::open("data/my_file.txt") {
+    Err(why) => panic!("couldn't open {}: {}", display1, why),
+    Ok(file) => file,
+  };
 
-    let mut buff: Vec<u8> = Vec::new();
+  let mut buff: Vec<u8> = Vec::new();
     match file.read_to_end(&mut buff){
       Ok(bytes_read) => {
         println!("Successfully read {} bytes", bytes_read);
@@ -20,5 +20,5 @@ fn main() {
       Err(e) => {
         eprintln!("Failed to read file: {}", e);
       }    
-    }
+  }
 }
