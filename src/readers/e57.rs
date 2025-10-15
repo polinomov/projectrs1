@@ -15,7 +15,7 @@ fn read_xml(_data: &Vec<u8>,  obj: &mut E57){
 
   
   let s1 = String::from_utf8_lossy(&d).into_owned();
-  println!("Converted string: {}", s1),
+  println!("Converted string: {}", s1);
 
   match String::from_utf8(d) {
         Ok(text) => println!("Converted string: {}", text),
