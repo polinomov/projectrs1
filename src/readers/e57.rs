@@ -1,21 +1,55 @@
 
 //use crate::traits::readers;
- 
+// ASTM E2807-11
+
+use crc32c::crc32c;
+
 pub struct E57{
-  pub first: u32,
-  pub size: u32,
+  read_start :u64,
+  read_size :u64,
+  shit_in_page :usize,
+  bytes_to_proc :u64,
   pub action: fn(data: &Vec<u8>, obj: &mut E57),
-  pub xml_size: u32
+  pub page_size: u64,
+  items: Vec<u8>
 }
+
+
+fn parse_xml(_obj: &mut E57){
+  match String::from_utf8(_obj.items.clone()) {
+    Ok(text) => println!("Converted string: {}", text),
+    Err(err) => {
+      println!("Conversion failed: {}", err);
+      let invalid_bytes = err.into_bytes(); // recover original Vec<u8>
+      println!("Original bytes: {:?}", invalid_bytes);
+    }
+  }
+}
+
+fn read_block(_data: &Vec<u8>,  obj: &mut E57){
+ // let dlen = _data.len();
+  let real_sz :usize = 1020;
+  let crc32 = u32::from_le_bytes(_data[1020..1024].try_into().expect("a"));
+  let sub_vec = &_data[0..1020];
+  let checksum = crc32c(&sub_vec).swap_bytes();
+  println!("{:X}", crc32); 
+  println!("{:X}", checksum); 
+  let last: usize = real_sz;
+  let mut vv:  Vec<u8>  = _data[obj.shit_in_page..last].to_vec();
+  obj.items.append(&mut vv);
+  obj.shit_in_page = 0;
+  parse_xml(obj);
+  obj.items.clear();
+}
+
 
 fn read_xml(_data: &Vec<u8>,  obj: &mut E57){
   let d = _data.clone();
-
- 
-
   
   let s1 = String::from_utf8_lossy(&d).into_owned();
   println!("Converted string: {}", s1);
+
+ 
 
   match String::from_utf8(d) {
         Ok(text) => println!("Converted string: {}", text),
@@ -25,24 +59,21 @@ fn read_xml(_data: &Vec<u8>,  obj: &mut E57){
             println!("Original bytes: {:?}", invalid_bytes);
         }
   }
-  
-  
-  obj.first = 0;
-  obj.size  = 0;
 }
 
 fn read_header(_data: &Vec<u8>,  obj: &mut E57){
   let s = String::from_utf8(_data[..8].to_vec()).expect("Invalid UTF-8");
-
   println!("string: {}", s);//ASTM-E57
   let major_ver = u32::from_le_bytes(_data[8..12].try_into().expect("a"));
   let minor_ver = u32::from_le_bytes(_data[12..16].try_into().expect("a"));
   let xml_ofst:  u64 = u64::from_le_bytes(_data[24..32].try_into().expect("a"));
-  let xml_sz:    u64 = u64::from_le_bytes(_data[32..40].try_into().expect("a"));
-  obj.action = read_xml;
-  obj.first = xml_ofst as u32;
-  obj.size = xml_sz as u32;
-  println!("xml_sz: {}", obj.size);
+  obj.bytes_to_proc  = u64::from_le_bytes(_data[32..40].try_into().expect("a")); //xml_size
+  obj.page_size = u64::from_le_bytes(_data[40..48].try_into().expect("a"));
+  let pg_num :u64 = xml_ofst/obj.page_size;
+  obj.read_start = pg_num * obj.page_size;
+  obj.shit_in_page = (xml_ofst - obj.read_start) as usize;
+  obj.read_size = obj.page_size;
+  obj.action = read_block;
 }
 
 impl crate::readers::Seqreader  for E57{
@@ -50,23 +81,24 @@ impl crate::readers::Seqreader  for E57{
     println!("i-am-e57-start");
   }
 
-  fn next_chunk(&self) -> (u32, u32){
-    (self.first, self.size) 
+  fn next_chunk(&self) -> (u64, u64){
+    (self.read_start,self.read_size) 
   }
 
   fn process_bytes(& mut self,_data: &Vec<u8>){
-    //let mut me57 = self;
-    (self.action)(_data, self);
-    //let first_bytes: [u8; 4] = _data[0..4].try_into().expect("a");
-    //let first_num = u32::from_le_bytes(_data[0..4].try_into().expect("a"));
-
-    //let major: u32::from_le_bytes(_data[8..12].try_into().internal_err(WRONG_OFFSET)?),
- 
+     (self.action)(_data, self);
   }
 }
 
 pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
-  Box::new(E57{first:0 ,size:48, action:read_header, xml_size:0})
+  Box::new(E57{ 
+    read_start:0,
+    read_size:48, 
+    action:read_header, 
+    page_size:0,
+    shit_in_page:0,
+    bytes_to_proc:0,
+    items: Vec::new()})
 }
  
 

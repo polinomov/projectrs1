@@ -6,7 +6,7 @@ mod xyz;
 
 pub trait Seqreader {
   fn start(&self);
-  fn next_chunk(&self) -> (u32, u32);
+  fn next_chunk(&self) -> (u64, u64);
   fn process_bytes(&mut self, _data: &Vec<u8>);
 }
 
