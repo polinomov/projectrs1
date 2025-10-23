@@ -3,12 +3,13 @@
 // ASTM E2807-11
 
 use crc32c::crc32c;
+use std::cmp;
 
 pub struct E57{
   read_start :u64,
   read_size :u64,
   shit_in_page :usize,
-  bytes_to_proc :u64,
+  bytes_to_proc :usize,
   pub action: fn(data: &Vec<u8>, obj: &mut E57),
   pub page_size: u64,
   items: Vec<u8>
@@ -34,12 +35,19 @@ fn read_block(_data: &Vec<u8>,  obj: &mut E57){
   let checksum = crc32c(&sub_vec).swap_bytes();
   println!("{:X}", crc32); 
   println!("{:X}", checksum); 
-  let last: usize = real_sz;
-  let mut vv:  Vec<u8>  = _data[obj.shit_in_page..last].to_vec();
+  let first = obj.shit_in_page;
+  let mut last: usize = first + obj.bytes_to_proc as usize;
+  last = cmp::min(last, real_sz);
+  let mut vv:  Vec<u8>  = _data[first..last].to_vec();
   obj.items.append(&mut vv);
   obj.shit_in_page = 0;
-  parse_xml(obj);
-  obj.items.clear();
+  obj.bytes_to_proc -= last - first;
+  if obj.bytes_to_proc == 0 {
+    parse_xml(obj);
+    obj.items.clear();
+  } else{
+    obj.read_start += obj.page_size;
+  }
 }
 
 
@@ -67,7 +75,7 @@ fn read_header(_data: &Vec<u8>,  obj: &mut E57){
   let major_ver = u32::from_le_bytes(_data[8..12].try_into().expect("a"));
   let minor_ver = u32::from_le_bytes(_data[12..16].try_into().expect("a"));
   let xml_ofst:  u64 = u64::from_le_bytes(_data[24..32].try_into().expect("a"));
-  obj.bytes_to_proc  = u64::from_le_bytes(_data[32..40].try_into().expect("a")); //xml_size
+  obj.bytes_to_proc  = usize::from_le_bytes(_data[32..40].try_into().expect("a")); //xml_size
   obj.page_size = u64::from_le_bytes(_data[40..48].try_into().expect("a"));
   let pg_num :u64 = xml_ofst/obj.page_size;
   obj.read_start = pg_num * obj.page_size;
