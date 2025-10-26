@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 crc32c = "0.6"
+kiss_xml = "1.0.2"

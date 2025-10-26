@@ -4,6 +4,8 @@
 
 use crc32c::crc32c;
 use std::cmp;
+use kiss_xml::dom::*;
+use kiss_xml::errors::KissXmlError;
 
 pub struct E57{
   read_start :u64,
@@ -16,9 +18,24 @@ pub struct E57{
 }
 
 
-fn parse_xml(_obj: &mut E57){
+fn parse_xml(xml :&String, _obj: &mut E57) -> Result<(), kiss_xml::errors::KissXmlError>{
+  let dom = kiss_xml::parse_str(xml)?;
+  for e in dom.root_element().child_elements() {
+		println!("child element <{}>", e.name())
+	}
+ // let root = doc.root_
+ // let child_count = root.elements().len();
+ // println!("Root element: {}", root.name());
+ // println!("Number of child elements: {}", child_count);
+  Ok(())
+}
+
+fn xml2string(_obj: &mut E57){
   match String::from_utf8(_obj.items.clone()) {
-    Ok(text) => println!("Converted string: {}", text),
+    Ok(text) => {
+      println!("XML: {}",text);
+      parse_xml(&text, _obj);
+    }
     Err(err) => {
       println!("Conversion failed: {}", err);
       let invalid_bytes = err.into_bytes(); // recover original Vec<u8>
@@ -43,7 +60,7 @@ fn read_block(_data: &Vec<u8>,  obj: &mut E57){
   obj.shit_in_page = 0;
   obj.bytes_to_proc -= last - first;
   if obj.bytes_to_proc == 0 {
-    parse_xml(obj);
+    xml2string(obj);
     obj.items.clear();
   } else{
     obj.read_start += obj.page_size;
