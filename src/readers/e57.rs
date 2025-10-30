@@ -20,9 +20,38 @@ pub struct E57{
 
 fn parse_xml(xml :&String, _obj: &mut E57) -> Result<(), kiss_xml::errors::KissXmlError>{
   let dom = kiss_xml::parse_str(xml)?;
+  let root = dom.root_element();
+ 
+  for data3d in root.elements_by_name("data3D"){
+    for str in data3d.elements_by_name("vectorChild"){
+      for point in str.elements_by_name("points"){
+        // points
+        let mut file_ofst :u64 = 0;
+        for ptattr in  point.attributes(){         
+          println!("{}: {}", ptattr.0, ptattr.1);
+          let command: &String = &String::from(ptattr.0);
+          match command.as_str() {
+            "fileOffset" => file_ofst = ptattr.1.parse().expect("Not a valid u64"),
+            "recordCount" => println!("Stopping..."),
+            "type" => println!("Pausing..."),
+            _ => println!("Unknown command"),
+          }
+        }
+        println!("{}",file_ofst); 
+      }//point
+    }
+  }
+
+  //println!("child element <{}>", data3d);
+  //data3d.children()
+  
+  
+ 
+  /* 
   for e in dom.root_element().child_elements() {
 		println!("child element <{}>", e.name())
 	}
+  */
  // let root = doc.root_
  // let child_count = root.elements().len();
  // println!("Root element: {}", root.name());
