@@ -6,6 +6,7 @@ use crc32c::crc32c;
 use std::cmp;
 use kiss_xml::dom::*;
 use kiss_xml::errors::KissXmlError;
+use std::collections::VecDeque;
 
 pub struct E57{
   read_start :u64,
@@ -14,14 +15,14 @@ pub struct E57{
   bytes_to_proc :usize,
   pub action: fn(data: &Vec<u8>, obj: &mut E57),
   pub page_size: u64,
-  items: Vec<u8>
+  items: Vec<u8>,
+  procq: VecDeque<Box<dyn FnMut(&mut E57)>>
 }
 
 
 fn parse_xml(xml :&String, _obj: &mut E57) -> Result<(), kiss_xml::errors::KissXmlError>{
   let dom = kiss_xml::parse_str(xml)?;
   let root = dom.root_element();
- 
   for data3d in root.elements_by_name("data3D"){
     for str in data3d.elements_by_name("vectorChild"){
       for point in str.elements_by_name("points"){
@@ -41,21 +42,6 @@ fn parse_xml(xml :&String, _obj: &mut E57) -> Result<(), kiss_xml::errors::KissX
       }//point
     }
   }
-
-  //println!("child element <{}>", data3d);
-  //data3d.children()
-  
-  
- 
-  /* 
-  for e in dom.root_element().child_elements() {
-		println!("child element <{}>", e.name())
-	}
-  */
- // let root = doc.root_
- // let child_count = root.elements().len();
- // println!("Root element: {}", root.name());
- // println!("Number of child elements: {}", child_count);
   Ok(())
 }
 
@@ -74,7 +60,6 @@ fn xml2string(_obj: &mut E57){
 }
 
 fn read_block(_data: &Vec<u8>,  obj: &mut E57){
- // let dlen = _data.len();
   let real_sz :usize = 1020;
   let crc32 = u32::from_le_bytes(_data[1020..1024].try_into().expect("a"));
   let sub_vec = &_data[0..1020];
@@ -89,29 +74,13 @@ fn read_block(_data: &Vec<u8>,  obj: &mut E57){
   obj.shit_in_page = 0;
   obj.bytes_to_proc -= last - first;
   if obj.bytes_to_proc == 0 {
-    xml2string(obj);
+    let pfunc= obj.procq.pop_front();
+    if let Some(mut f) = pfunc {
+        f(obj); 
+    } 
     obj.items.clear();
   } else{
     obj.read_start += obj.page_size;
-  }
-}
-
-
-fn read_xml(_data: &Vec<u8>,  obj: &mut E57){
-  let d = _data.clone();
-  
-  let s1 = String::from_utf8_lossy(&d).into_owned();
-  println!("Converted string: {}", s1);
-
- 
-
-  match String::from_utf8(d) {
-        Ok(text) => println!("Converted string: {}", text),
-        Err(err) => {
-            println!("Conversion failed: {}", err);
-            let invalid_bytes = err.into_bytes(); // recover original Vec<u8>
-            println!("Original bytes: {:?}", invalid_bytes);
-        }
   }
 }
 
@@ -128,6 +97,13 @@ fn read_header(_data: &Vec<u8>,  obj: &mut E57){
   obj.shit_in_page = (xml_ofst - obj.read_start) as usize;
   obj.read_size = obj.page_size;
   obj.action = read_block;
+
+  let param: u64 = 10;
+  obj.procq.push_back(Box::new(move |e57| {
+    let pin: u64 = param;
+    println!("Closure {}",pin);
+    xml2string(e57);
+  }));
 }
 
 impl crate::readers::Seqreader  for E57{
@@ -152,9 +128,12 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
     page_size:0,
     shit_in_page:0,
     bytes_to_proc:0,
-    items: Vec::new()})
+    items: Vec::new(),
+    procq: VecDeque::new()
+  })
 }
- 
+
+
 
 
 
