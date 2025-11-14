@@ -1,0 +1,7 @@
+<script type="module">
+  import init, { add } from "./pkg/wasm_demo.js";
+
+  await init();
+  console.log(add(5, 6));
+</script>
+
