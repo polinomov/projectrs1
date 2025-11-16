@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Minimal Page</title>
+</head>
+<body>
+  <h1>Hello</h1>
+  <script type="module">
+    import init, {add123, addxx,  modify_bytes } from "./pkg/wasm_demo.js";
+    await init();
+    console.log(addxx(5, 6));
+    const arr = new Uint8Array([1, 2, 3]);
+    modify_bytes(arr);
+    console.log(arr);
+    modify_bytes(arr);
+    console.log(arr);
+    //console.log(addxx(5, 6));
+  </script>
+</body>
+</html>

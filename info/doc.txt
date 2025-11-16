@@ -1,0 +1,20 @@
+| Node Type          | Description                                      | XML form                                    |
+| ------------------ | ------------------------------------------------ | ------------------------------------------- |
+| `Structure`        | Named group of fields (key–value pairs)          | `<Structure>...</Structure>`                |
+| `Vector`           | Ordered list of child nodes                      | `<Vector>...</Vector>`                      |
+| `CompressedVector` | Defines compressed binary data arrays            | `<CompressedVector>...</CompressedVector>`  |
+| `Integer`          | Signed integer with optional min/max             | `<Integer minimum="..." maximum="..."/>`    |
+| `ScaledInteger`    | Fixed-point number with scale/offset             | `<ScaledInteger scale="..." offset="..."/>` |
+| `Float`            | Floating-point number (single/double)            | `<Float precision="single"/>`               |
+| `String`           | UTF-8 text                                       | `<String>hello</String>`                    |
+| `Blob`             | Binary large object                              | `<Blob fileOffset="..." length="..."/>`     |
+| `VectorChild`      | Implicit — any child element inside a `<Vector>` | (not an explicit tag)                       |
+
+
+| Attribute                    | Applies to       | Purpose                               |
+| ---------------------------- | ---------------- | ------------------------------------- |
+| `minimum` / `maximum`        | Integer types    | limits the valid range                |
+| `scale` / `offset`           | ScaledInteger    | converts to real units                |
+| `precision`                  | Float            | `"single"` or `"double"`              |
+| `allowHeterogeneousChildren` | Vector           | whether children can differ in type   |
+| `prototype`                  | CompressedVector | defines the structure of each element |
