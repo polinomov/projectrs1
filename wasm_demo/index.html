@@ -7,15 +7,31 @@
   <style>
     html,body {margin:0; height:100%;}
     canvas {width:100%; height:100%; display:block;}
+    .top-button {
+      position: absolute;
+      top: 0;
+      left: 0;
+      padding: 10px 16px;
+      font-size: 16px;
+      opacity: 0.9;
+      z-index: 10; 
+    }
   </style>
 </head>
 <body>
+  <button class="top-button" onclick="renderPoints()">Draw</button>
   <canvas id="c"></canvas>
-
+  <script type="module" src=".\scripts\ptrender.js"></script>
   <script>
+   // import init, {add123, addxx,  modify_bytes } from "./pkg/wasm_demo.js";
+   // await init();
     const canvas = document.getElementById('c');
     const gl = canvas.getContext('webgl');
     if (!gl) throw new Error('WebGL not supported');
+    gl.disable(gl.BLEND);
+    const size = 1024;
+    const pixels = new Uint8Array(size * size * 4);
+    const tex = gl.createTexture();
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -69,6 +85,15 @@
       return p;
     }
 
+    function renderPoints(){
+      console.log("Render Points: ");
+      renderPointsWasm(pixels);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0,  size,  size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      draw();
+    }
+
     const prog = program(vsSrc, fsSrc);
     gl.useProgram(prog);
 
@@ -95,8 +120,8 @@
     gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
 
     // --- CREATE TEXTURE AND FILL IN JS ----------------------------------
-    const size = 256;
-    const pixels = new Uint8Array(size * size * 4);
+    //const size = 256;
+    //const pixels = new Uint8Array(size * size * 4);
 
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
@@ -108,7 +133,7 @@
       }
     }
 
-    const tex = gl.createTexture();
+    //const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
