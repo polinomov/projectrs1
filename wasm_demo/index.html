@@ -59,8 +59,15 @@ uniform usampler2D u_tex;
 out vec4 outColor;
 void main(){
     uint v = texture(u_tex,v_uv).r;
-    float f = float(v)/255.0;
-    outColor = vec4(f,f,f,1.0);
+    //float f = float(v)/255.0;
+    uvec4 rgba = uvec4(
+      v          & 0xFFu,
+      (v >> 8u)  & 0xFFu,
+      (v >> 16u) & 0xFFu,
+      (v >> 24u) & 0xFFu
+    );
+    //outColor = vec4(f,f,f,1.0);
+    outColor = vec4(rgba) / 255.0;
 }`;
 
 function compile(type, src){
@@ -116,10 +123,10 @@ const W = 256, H = 256;
 const data = new Uint32Array(W * H);
 for( x = 0; x<W; x++){
   for(y = 0; y<H; y++){
-    if((x<W/4) && (y<H/2)){
+    if((x<W/2) && (y<H/2)){
       data[x + y*W] = 255;
     }else{
-      data[x + y*W] = 128;
+      data[x + y*W] = 128 + (128<<8) + (128<<16);
     } 
   }
 }
