@@ -5,11 +5,10 @@
 use crc32c::crc32c;
 
 use roxmltree::{Document, Node};
-use std::str::FromStr;
-use std::fs::File;
-use std::io::Write;
-
+use std::collections::VecDeque;
 const PAGE_SIZE: u64 = 1024;
+
+//type PgProc = Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) -> Vec<(PageJob,JobData)>>>;
 
 struct JobData{
   read_start :u64,
@@ -18,21 +17,55 @@ struct JobData{
   cnt :u32,
   acc: Vec<u8>
 }
-struct PageJob {
-  jobdata: JobData,
-  func1: Box<dyn FnMut(&Vec<u8>, &mut JobData) -> Option<Box<PageJob>>>,
-  job_next: Option<Box<PageJob>>
+
+impl JobData{
+  fn empty() -> Self {
+    Self { read_start:0, read_size:0, shift:0, cnt:0, acc:Vec::new() } 
+  }
 }
 
+struct PageJob {
+  exefunc: Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) ->  Vec<(PageJob,JobData)> >>,
+}
 impl PageJob{
-  fn call(&mut self, data: &Vec<u8>) -> Option<Box<PageJob>>{ 
-    (&mut self.func1)(data, &mut self.jobdata)
+  fn empty() -> Self {
+    Self { 
+      exefunc: None
+    } 
   }
+  
+  fn execute(& mut self,data: &Vec<u8>,  jd: &mut JobData) ->  Vec<(PageJob,JobData)>{
+    if let Some(ff) = self.exefunc.as_mut(){
+      ff(data, jd)
+    }
+    else{
+      Vec::new()
+    }
+  } 
 }
 
 pub struct E57{
   pub action: fn(data: &Vec<u8>, obj: &mut E57),
-  job: Option<Box<PageJob>>
+  jqueue : VecDeque<(PageJob,JobData)>,
+}
+
+impl E57{
+  fn create_job(&mut self,j:PageJob, d: JobData){
+    self.jqueue.push_back((j,d));
+  }
+  fn call_job(&mut self, data: &Vec<u8>){
+    let mut jc = self.jqueue.pop_front().unwrap();
+    let first = jc.1.shift as usize;
+    let ret = jc.0.execute(&data[first..1020].to_vec(), &mut jc.1);
+    if ret.len() == 0 {
+      jc.1.shift = 0; 
+      self.jqueue.push_front(jc); // continue
+    } else{
+      for r in ret {
+        self.jqueue.push_back(r);
+      }
+    }
+  }
 }
 
 fn read_page(_data: &Vec<u8>,  e57: &mut E57){
@@ -44,13 +77,7 @@ fn read_page(_data: &Vec<u8>,  e57: &mut E57){
     println!("{:X}", crc32); 
     println!("{:X}", checksum); 
   }
-  if let Some(p) = e57.job.as_mut() {
-    let first = p.jobdata.shift as usize;
-    let next_job = p.call( &_data[first..1020].to_vec());
-    if next_job.is_some() {
-      e57.job = next_job;
-    }
-  }
+  e57.call_job(_data);
 }
 
 impl crate::readers::Seqreader  for E57{
@@ -59,8 +86,9 @@ impl crate::readers::Seqreader  for E57{
   }
 
   fn next_chunk(&self) -> (u64, u64){
-    if let Some(j) = self.job.as_ref() {
-      return (j.jobdata.read_start, j.jobdata.read_size);
+    if let Some(j) = self.jqueue.front() {
+      println!("{} {}",j.1.read_start, j.1.read_size);
+      return (j.1.read_start, j.1.read_size);
     }
     (0,0) 
   }
@@ -70,7 +98,14 @@ impl crate::readers::Seqreader  for E57{
   }
 }
 
-fn make_vert_job(ofst:u64 , next_j : Option<Box<PageJob>>)-> Option<Box<PageJob>>{
+
+/* 
+fn make_vert_job(obj3d :Vec<Node>, ndx :usize)-> Option<Box<PageJob>>{
+  let mut recs = 0;
+  let mut ofst = 0;
+  let Some(pt_node) = obj3d[ndx].children().find(|n| n.has_tag_name("points")) else{
+    return None;
+  };
   let ret_job = PageJob {
     jobdata: JobData{
       read_start: (ofst/PAGE_SIZE)*PAGE_SIZE, 
@@ -79,15 +114,16 @@ fn make_vert_job(ofst:u64 , next_j : Option<Box<PageJob>>)-> Option<Box<PageJob>
       cnt:0,
       acc:Vec::new()
     },
-    func1: Box::new(move |pagedata, jobdata| {
+    func1: Box::new(move|pagedata, jobdata| {
+      //return make_vert_job1(obj3d);
       return None;
     }),
-    job_next:next_j
+    job_next: None
   };
-
   return Some(Box::new(ret_job));
 }
-
+*/
+ /* 
 fn collect_vers_job(xml :String) -> Option<Box<PageJob>>{
   let doc = Document::parse(&xml).unwrap();
   let node = doc.root_element();
@@ -121,64 +157,97 @@ fn collect_vers_job(xml :String) -> Option<Box<PageJob>>{
     }
   }
   println!("POINTS:{:?}", num_vert);
+  make_vert_job(obj3d,0);
+ 
+  
+  /* 
+  for j3d in obj3d {
+    let mut recs = 0;
+    let mut ofst = 0;
+    let Some(pt_node) = j3d.children().find(|n| n.has_tag_name("points")) else{
+      continue;
+    };
+    println!("POINTS:{:?}", num_vert);
+    if let Some(attr) = pt_node.attribute("recordCount") {
+      recs = attr.parse::<u64>().unwrap();
+    }
+    if let Some(attr) = pt_node.attribute("fileOffset") {
+      ofst = attr.parse::<u64>().unwrap();
+    }
+
+    let Some(proto) = pt_node.children().find(|n| n.has_tag_name("prototype")) else{
+      continue;
+    };
+    for prec in proto.children() {
+      println!("{:?}", prec.tag_name().name());
+    }
+    //next_job = make_vert_job(ofst,next_job);
+  }
+  */
+
   return next_job;
 }
+  */
 
-fn blah(xml :String){
-  println!("=== BLAH==========");
-  //println!("{}",xml);
-}
 
-fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Option<Box<PageJob>>{
-  let ret_job = PageJob {
-    jobdata: JobData{
+
+fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
+  let ret_jdata =  JobData{
       read_start: (xml_ofst/PAGE_SIZE)*PAGE_SIZE, 
       read_size:PAGE_SIZE, 
       shift:xml_ofst%PAGE_SIZE,
       cnt:0,
       acc:Vec::new()
-    },
-    func1: Box::new(move |pagedata, jobdata: &mut JobData| {
+  };
+  let ret_job = PageJob {
+    exefunc: Some(Box::new(move |pagedata, jobdata: &mut JobData| {
       let nbytes = xml_size as usize;
       let pg_len = pagedata.len();
       let bytes_left = nbytes - jobdata.acc.len();
       let bytes_add = if bytes_left>pg_len { pg_len } else { bytes_left };
+ 
       jobdata.acc.extend_from_slice(&pagedata[0.. bytes_add]);
       if jobdata.acc.len() < nbytes {
         jobdata.read_start = jobdata.read_start + PAGE_SIZE;
-        jobdata.shift = 0;
-        return None; // continue reading
+        return Vec::new(); // continue reading
       }
       let xml_vec = jobdata.acc.clone();
       let s = String::from_utf8(xml_vec).unwrap();
-      //blah(s.clone());
-      //println!("{}",s);
-      collect_vers_job(s);   
-      return None; 
-    }),
-    job_next:None
+      println!("{}",s);
+        //collect_vers_job(s);   
+      return vec![( PageJob::empty(),JobData::empty())]; //stop
+    }))
   };
-  Some(Box::new(ret_job))
+  return vec![(ret_job,ret_jdata)];
 }
 
 pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
   let mut e57 = Box::new(E57{ 
     action:read_page, 
-    job:None
+    jqueue: VecDeque::new()
   });
 
+ // let ret_jdata = JobData{read_start:0, read_size:1024,shift:0,cnt:0,acc:Vec::new());
+  let ret_jdata =  JobData {
+      read_start: 0, 
+      read_size:PAGE_SIZE, 
+      shift:0,
+      cnt:0,
+      acc:Vec::new()
+  };
+  
   let header_job = PageJob {
-    jobdata: JobData{read_start:0, read_size:1024,shift:0,cnt:0,acc:Vec::new()},
-    func1: Box::new(move |pagedata, _j| {
+    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData| {
       let s = String::from_utf8(pagedata[..8].to_vec()).expect("Invalid UTF-8");
       println!("string: {}", s);//ASTM-E57
       let xml_ofst = u64::from_le_bytes(pagedata[24..32].try_into().expect("a"));
       let xml_size = u64::from_le_bytes(pagedata[32..40].try_into().expect("a"));
+      //return Vec::new(); 
       make_xml_read_job(xml_ofst,xml_size)
-    }),
-    job_next: None
+    })),
   }; 
-  e57.job = Some(Box::new(header_job));
+  
+  e57.create_job(header_job, ret_jdata);
   e57
 }
 
