@@ -18,6 +18,7 @@ fn main() {
     Ok(file) => file,
   };
   
+  let mut pcloud = Box::new(storage::make_strorage());
   let mut rdobj = readers::make_e57();
   rdobj.start();
   loop{
@@ -29,7 +30,7 @@ fn main() {
       file.seek(SeekFrom::Start(first as u64));
       let mut buffer = vec![0u8; size as usize];
       file.read_exact(&mut buffer);
-      rdobj.process_bytes(&buffer);
+      rdobj.process_bytes(&buffer,&mut pcloud);
     }
   }
   

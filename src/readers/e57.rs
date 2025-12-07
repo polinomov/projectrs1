@@ -6,6 +6,8 @@ use crc32c::crc32c;
 
 use roxmltree::{Document, Node};
 use std::collections::VecDeque;
+
+use crate::storage;
 const PAGE_SIZE: u64 = 1024;
 
 //type PgProc = Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) -> Vec<(PageJob,JobData)>>>;
@@ -47,6 +49,7 @@ impl PageJob{
 pub struct E57{
   pub action: fn(data: &Vec<u8>, obj: &mut E57),
   jqueue : VecDeque<(PageJob,JobData)>,
+ // pst: Box<dyn crate::storage::PStorage>
 }
 
 impl E57{
@@ -87,14 +90,15 @@ impl crate::readers::Seqreader  for E57{
 
   fn next_chunk(&self) -> (u64, u64){
     if let Some(j) = self.jqueue.front() {
-      println!("{} {}",j.1.read_start, j.1.read_size);
+      //println!("{} {}",j.1.read_start, j.1.read_size);
       return (j.1.read_start, j.1.read_size);
     }
     (0,0) 
   }
 
-  fn process_bytes(& mut self,_data: &Vec<u8>){
-     (self.action)(_data, self);
+  fn process_bytes(& mut self,_data: &Vec<u8>, pcl: &mut Box<dyn crate::storage::PStorage>){
+    //pcl.alloc_points(0);
+    (self.action)(_data, self);
   }
 }
 
