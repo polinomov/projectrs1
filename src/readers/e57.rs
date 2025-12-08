@@ -10,6 +10,9 @@ use std::collections::VecDeque;
 use crate::storage;
 const PAGE_SIZE: u64 = 1024;
 
+type PCloud = Box<dyn crate::storage::PStorage>;
+
+
 //type PgProc = Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) -> Vec<(PageJob,JobData)>>>;
 
 struct JobData{
@@ -27,7 +30,7 @@ impl JobData{
 }
 
 struct PageJob {
-  exefunc: Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) ->  Vec<(PageJob,JobData)> >>,
+  exefunc: Option<Box<dyn FnMut(&Vec<u8>, &mut JobData, &mut PCloud) -> Vec<(PageJob,JobData)>>>,
 }
 impl PageJob{
   fn empty() -> Self {
@@ -36,9 +39,9 @@ impl PageJob{
     } 
   }
   
-  fn execute(& mut self,data: &Vec<u8>,  jd: &mut JobData) ->  Vec<(PageJob,JobData)>{
+  fn execute(& mut self, data: &Vec<u8>,  jd: &mut JobData, pcl: &mut PCloud) -> Vec<(PageJob,JobData)>{
     if let Some(ff) = self.exefunc.as_mut(){
-      ff(data, jd)
+      ff(data, jd, pcl)
     }
     else{
       Vec::new()
@@ -47,19 +50,18 @@ impl PageJob{
 }
 
 pub struct E57{
-  pub action: fn(data: &Vec<u8>, obj: &mut E57),
+  pub action: fn(data: &Vec<u8>, pcl: &mut PCloud, obj: &mut E57),
   jqueue : VecDeque<(PageJob,JobData)>,
- // pst: Box<dyn crate::storage::PStorage>
 }
 
 impl E57{
   fn create_job(&mut self,j:PageJob, d: JobData){
     self.jqueue.push_back((j,d));
   }
-  fn call_job(&mut self, data: &Vec<u8>){
+  fn call_job(&mut self, data: &Vec<u8>, pcl: &mut PCloud){
     let mut jc = self.jqueue.pop_front().unwrap();
     let first = jc.1.shift as usize;
-    let ret = jc.0.execute(&data[first..1020].to_vec(), &mut jc.1);
+    let ret = jc.0.execute(&data[first..1020].to_vec(), &mut jc.1, pcl);
     if ret.len() == 0 {
       jc.1.shift = 0; 
       self.jqueue.push_front(jc); // continue
@@ -71,7 +73,7 @@ impl E57{
   }
 }
 
-fn read_page(_data: &Vec<u8>,  e57: &mut E57){
+fn read_page(_data: &Vec<u8>, pcl: &mut PCloud,  e57: &mut E57){
   let real_sz :usize = 1020;
   let crc32 = u32::from_le_bytes(_data[1020..1024].try_into().expect("a"));
   let sub_vec = &_data[0..1020];
@@ -80,7 +82,7 @@ fn read_page(_data: &Vec<u8>,  e57: &mut E57){
     println!("{:X}", crc32); 
     println!("{:X}", checksum); 
   }
-  e57.call_job(_data);
+  e57.call_job(_data, pcl);
 }
 
 impl crate::readers::Seqreader  for E57{
@@ -96,9 +98,9 @@ impl crate::readers::Seqreader  for E57{
     (0,0) 
   }
 
-  fn process_bytes(& mut self,_data: &Vec<u8>, pcl: &mut Box<dyn crate::storage::PStorage>){
-    //pcl.alloc_points(0);
-    (self.action)(_data, self);
+  fn process_bytes(& mut self,data: &Vec<u8>, pcl: &mut PCloud){
+    pcl.alloc_points(0);
+    (self.action)(data, pcl, self);
   }
 }
 
@@ -204,7 +206,7 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
       acc:Vec::new()
   };
   let ret_job = PageJob {
-    exefunc: Some(Box::new(move |pagedata, jobdata: &mut JobData| {
+    exefunc: Some(Box::new(move |pagedata, jobdata: &mut JobData, pcl: &mut PCloud| {
       let nbytes = xml_size as usize;
       let pg_len = pagedata.len();
       let bytes_left = nbytes - jobdata.acc.len();
@@ -241,7 +243,7 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
   };
   
   let header_job = PageJob {
-    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData| {
+    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, pcl: &mut PCloud| {
       let s = String::from_utf8(pagedata[..8].to_vec()).expect("Invalid UTF-8");
       println!("string: {}", s);//ASTM-E57
       let xml_ofst = u64::from_le_bytes(pagedata[24..32].try_into().expect("a"));
