@@ -173,15 +173,6 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
     jqueue: VecDeque::new()
   });
 
- // let ret_jdata = JobData{read_start:0, read_size:1024,shift:0,cnt:0,acc:Vec::new());
-  let ret_jdata =  JobData {
-      read_start: 0, 
-      read_size:PAGE_SIZE, 
-      shift:0,
-      cnt:0,
-      acc:Vec::new()
-  };
-  
   let header_job = PageJob {
     exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
       let s = String::from_utf8(pagedata[..8].to_vec()).expect("Invalid UTF-8");
@@ -192,7 +183,7 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
     })),
   }; 
   
-  e57.create_job(header_job, ret_jdata);
+  e57.create_job(header_job, JobData::create(0));
   e57
 }
 
