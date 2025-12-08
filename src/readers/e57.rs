@@ -7,13 +7,9 @@ use crc32c::crc32c;
 use roxmltree::{Document, Node};
 use std::collections::VecDeque;
 
-use crate::storage;
 const PAGE_SIZE: u64 = 1024;
 
 type PCloud = Box<dyn crate::storage::PStorage>;
-
-
-//type PgProc = Option<Box<dyn FnMut(&Vec<u8>, &mut JobData) -> Vec<(PageJob,JobData)>>>;
 
 struct JobData{
   read_start :u64,
@@ -114,98 +110,40 @@ impl crate::readers::Seqreader  for E57{
   }
 }
 
+/////////////// Jobs ////////////////////////////
 
-/* 
-fn make_vert_job(obj3d :Vec<Node>, ndx :usize)-> Option<Box<PageJob>>{
-  let mut recs = 0;
-  let mut ofst = 0;
-  let Some(pt_node) = obj3d[ndx].children().find(|n| n.has_tag_name("points")) else{
-    return None;
-  };
-  let ret_job = PageJob {
-    jobdata: JobData{
-      read_start: (ofst/PAGE_SIZE)*PAGE_SIZE, 
-      read_size:PAGE_SIZE, 
-      shift:ofst%PAGE_SIZE,
-      cnt:0,
-      acc:Vec::new()
-    },
-    func1: Box::new(move|pagedata, jobdata| {
-      //return make_vert_job1(obj3d);
-      return None;
-    }),
-    job_next: None
-  };
-  return Some(Box::new(ret_job));
-}
-*/
- /* 
-fn collect_vers_job(xml :String) -> Option<Box<PageJob>>{
+fn collect_verts_job(xml :String)-> Vec<(PageJob,JobData)>{
   let doc = Document::parse(&xml).unwrap();
   let node = doc.root_element();
-  let mut num_vert:u32 = 0;
-  let mut next_job: Option<Box<PageJob>> = None;
   let mut obj3d :Vec<Node> = Vec::new();
   for child in node.children() {
     if child.tag_name().name() == "data3D" {
-      println!("{:?}", child.tag_name().name());
       for vecchild in child.children() {
-        if vecchild.tag_name().name() == "vectorChild" {
-          //println!("{:?}", vecchild.tag_name().name());
-          for pt in vecchild.children() {
-            if(pt.tag_name().name() == "points"){
-              //println!("{:?}", pt.tag_name().name());
-              for attr in pt.attributes() {
-                if attr.name() == "recordCount"{
-                  let nn = attr.value().parse::<u32>().unwrap();
-                  num_vert = num_vert  +  nn;
-                }
-                //println!("Attribute: {} = {}", attr.name(), attr.value());
-              } 
-            }
-          }
-          obj3d.push(vecchild);
-          //numObj = numObj + 1;
-          //let nj = make_vert_job(0, next_job);
-          //next_job = nj;
-        }
+        obj3d.push(vecchild);
       }
     }
   }
-  println!("POINTS:{:?}", num_vert);
-  make_vert_job(obj3d,0);
- 
-  
-  /* 
   for j3d in obj3d {
-    let mut recs = 0;
-    let mut ofst = 0;
     let Some(pt_node) = j3d.children().find(|n| n.has_tag_name("points")) else{
       continue;
     };
-    println!("POINTS:{:?}", num_vert);
+    let mut recs = 0;
+    let mut ofst = 0;
     if let Some(attr) = pt_node.attribute("recordCount") {
       recs = attr.parse::<u64>().unwrap();
     }
     if let Some(attr) = pt_node.attribute("fileOffset") {
       ofst = attr.parse::<u64>().unwrap();
     }
-
     let Some(proto) = pt_node.children().find(|n| n.has_tag_name("prototype")) else{
       continue;
     };
     for prec in proto.children() {
       println!("{:?}", prec.tag_name().name());
     }
-    //next_job = make_vert_job(ofst,next_job);
   }
-  */
-
-  return next_job;
+  return vec![( PageJob::empty(),JobData::empty())];//stop
 }
-  */
-
-
 
 fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
   let ret_job = PageJob {
@@ -223,8 +161,7 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
       let xml_vec = jobdata.acc.clone();
       let s = String::from_utf8(xml_vec).unwrap();
       println!("{}",s);
-        //collect_vers_job(s);   
-      return vec![( PageJob::empty(),JobData::empty())]; //stop
+      collect_verts_job(s)  
     }))
   };
   return vec![(ret_job, JobData::create(xml_ofst))];
@@ -251,7 +188,6 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
       println!("string: {}", s);//ASTM-E57
       let xml_ofst = u64::from_le_bytes(pagedata[24..32].try_into().expect("a"));
       let xml_size = u64::from_le_bytes(pagedata[32..40].try_into().expect("a"));
-      //return Vec::new(); 
       make_xml_read_job(xml_ofst,xml_size)
     })),
   }; 
