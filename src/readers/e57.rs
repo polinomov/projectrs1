@@ -16,12 +16,13 @@ struct JobData{
   read_size :u64,
   shift :u64,
   cnt :u32,
-  acc: Vec<u8>
+  acc: Vec<u8>,
+  is_done :bool
 }
 
 impl JobData{
   fn empty() -> Self {
-    Self { read_start:0, read_size:0, shift:0, cnt:0, acc:Vec::new() } 
+    Self { read_start:0, read_size:0, shift:0, cnt:0, acc:Vec::new(), is_done:true } 
   }
 
   fn create(ofst : u64) -> Self {
@@ -30,7 +31,8 @@ impl JobData{
       read_size: PAGE_SIZE, 
       shift: ofst%PAGE_SIZE,
       cnt: 0,
-      acc:Vec::new()     
+      acc:Vec::new(),
+      is_done:true     
     } 
   }
 }
@@ -69,8 +71,10 @@ impl E57{
     let first = jc.1.shift as usize;
     let ret = jc.0.execute(&data[first..1020].to_vec(), &mut jc.1, pcl);
     if ret.len() == 0 {
-      jc.1.shift = 0; 
-      self.jqueue.push_front(jc); // continue
+      if jc.1.is_done == false{
+        jc.1.shift = 0; 
+        self.jqueue.push_front(jc); // continue
+      }
     } else{
       for r in ret {
         self.jqueue.push_back(r);
@@ -156,6 +160,7 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
       jobdata.acc.extend_from_slice(&pagedata[0.. bytes_add]);
       if jobdata.acc.len() < nbytes {
         jobdata.read_start = jobdata.read_start + PAGE_SIZE;
+        jobdata.is_done = false;
         return Vec::new(); // continue reading
       }
       let xml_vec = jobdata.acc.clone();
