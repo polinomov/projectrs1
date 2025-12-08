@@ -27,6 +27,16 @@ impl JobData{
   fn empty() -> Self {
     Self { read_start:0, read_size:0, shift:0, cnt:0, acc:Vec::new() } 
   }
+
+  fn create(ofst : u64) -> Self {
+    Self { 
+      read_start: (ofst/PAGE_SIZE)*PAGE_SIZE, 
+      read_size: PAGE_SIZE, 
+      shift: ofst%PAGE_SIZE,
+      cnt: 0,
+      acc:Vec::new()     
+    } 
+  }
 }
 
 struct PageJob {
@@ -99,7 +109,7 @@ impl crate::readers::Seqreader  for E57{
   }
 
   fn process_bytes(& mut self,data: &Vec<u8>, pcl: &mut PCloud){
-    pcl.alloc_points(0);
+    //pcl.alloc_points(0);
     (self.action)(data, pcl, self);
   }
 }
@@ -198,15 +208,8 @@ fn collect_vers_job(xml :String) -> Option<Box<PageJob>>{
 
 
 fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
-  let ret_jdata =  JobData{
-      read_start: (xml_ofst/PAGE_SIZE)*PAGE_SIZE, 
-      read_size:PAGE_SIZE, 
-      shift:xml_ofst%PAGE_SIZE,
-      cnt:0,
-      acc:Vec::new()
-  };
   let ret_job = PageJob {
-    exefunc: Some(Box::new(move |pagedata, jobdata: &mut JobData, pcl: &mut PCloud| {
+    exefunc: Some(Box::new(move |pagedata, jobdata: &mut JobData, _pcl: &mut PCloud| {
       let nbytes = xml_size as usize;
       let pg_len = pagedata.len();
       let bytes_left = nbytes - jobdata.acc.len();
@@ -224,7 +227,7 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
       return vec![( PageJob::empty(),JobData::empty())]; //stop
     }))
   };
-  return vec![(ret_job,ret_jdata)];
+  return vec![(ret_job, JobData::create(xml_ofst))];
 }
 
 pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
@@ -243,7 +246,7 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
   };
   
   let header_job = PageJob {
-    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, pcl: &mut PCloud| {
+    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
       let s = String::from_utf8(pagedata[..8].to_vec()).expect("Invalid UTF-8");
       println!("string: {}", s);//ASTM-E57
       let xml_ofst = u64::from_le_bytes(pagedata[24..32].try_into().expect("a"));
