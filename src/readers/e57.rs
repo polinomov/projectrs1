@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 
 const PAGE_SIZE: u64 = 1024;
 
-type PCloud = Box<dyn crate::storage::PStorage>;
+type PCloud = Box<dyn crate::readers::ReaderCb>;
 
 struct JobData{
   read_start :u64,
@@ -115,8 +115,17 @@ impl crate::readers::Seqreader  for E57{
 }
 
 /////////////// Jobs ////////////////////////////
+fn parse_verts_job(ofst :u64, recs:u64) -> Vec<(PageJob,JobData)>{
+  let ret_job = PageJob {
+    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
+      _pcl.message( &format!("numverts={}", recs));
+      return vec![( PageJob::empty(),JobData::empty())];//stop
+     })),
+  }; 
+  return vec![(ret_job, JobData::create(ofst))];
+}
 
-fn collect_verts_job(xml :String)-> Vec<(PageJob,JobData)>{
+fn parse_xml_job(xml :String)-> Vec<(PageJob,JobData)>{
   let doc = Document::parse(&xml).unwrap();
   let node = doc.root_element();
   let mut obj3d :Vec<Node> = Vec::new();
@@ -127,6 +136,7 @@ fn collect_verts_job(xml :String)-> Vec<(PageJob,JobData)>{
       }
     }
   }
+  let mut jvec:Vec<(PageJob,JobData)>  = Vec::new();
   for j3d in obj3d {
     let Some(pt_node) = j3d.children().find(|n| n.has_tag_name("points")) else{
       continue;
@@ -145,8 +155,13 @@ fn collect_verts_job(xml :String)-> Vec<(PageJob,JobData)>{
     for prec in proto.children() {
       println!("{:?}", prec.tag_name().name());
     }
+    let vjob = parse_verts_job(ofst,recs);
+    for v in vjob{
+      jvec.push(v);
+    }
   }
-  return vec![( PageJob::empty(),JobData::empty())];//stop
+  jvec.push(( PageJob::empty(),JobData::empty())); //stop
+  return jvec;
 }
 
 fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
@@ -163,10 +178,11 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
         jobdata.is_done = false;
         return Vec::new(); // continue reading
       }
+      
       let xml_vec = jobdata.acc.clone();
       let s = String::from_utf8(xml_vec).unwrap();
-      println!("{}",s);
-      collect_verts_job(s)  
+      //println!("{}",s);
+      parse_xml_job(s)  
     }))
   };
   return vec![(ret_job, JobData::create(xml_ofst))];
@@ -180,6 +196,7 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
 
   let header_job = PageJob {
     exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
+      _pcl.message("AAA");
       let s = String::from_utf8(pagedata[..8].to_vec()).expect("Invalid UTF-8");
       println!("string: {}", s);//ASTM-E57
       let xml_ofst = u64::from_le_bytes(pagedata[24..32].try_into().expect("a"));

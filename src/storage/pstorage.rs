@@ -1,3 +1,4 @@
+/* 
 pub struct PStorageImpl{
   num :u64
 }
@@ -14,5 +15,6 @@ pub fn make_new_storage() -> Box<dyn crate::storage::PStorage> {
   let a = Box::new(PStorageImpl{num:0});
   a
 }
+  */
 
 
