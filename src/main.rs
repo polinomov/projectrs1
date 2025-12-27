@@ -28,9 +28,9 @@ fn main() {
   let display1 = path.display();
   // /mnt/c/DEV/lasdata/e57/big/
   // Open the path in read-only mode, returns `io::Result<File>`
-  //let mut file = match File::open("data/bunnyFloat.e57") {
+  let mut file = match File::open("data/bunnyFloat.e57") {
   //let mut file = match File::open("data/StBarthelemy.e57") {
-  let mut file = match File::open("/mnt/c/DEV/lasdata/e57/big/cloud_0.e57") {
+  //let mut file = match File::open("/mnt/c/DEV/lasdata/e57/big/cloud_0.e57") {
     Err(why) => panic!("couldn't open {}: {}", display1, why),
     Ok(file) => file,
   };

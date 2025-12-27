@@ -115,9 +115,45 @@ impl crate::readers::Seqreader  for E57{
 }
 
 /////////////// Jobs ////////////////////////////
-fn parse_verts_job(ofst :u64, recs:u64) -> Vec<(PageJob,JobData)>{
+fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobData)>{
+  struct RecI{
+    first:u32,
+    last:u32
+  }
+  impl RecI{
+    fn def() -> Self{
+      Self{first:0 , last :0}
+    }
+  }
+  struct Record{
+    x:  RecI
+  }
+  let mut this_rec = Record{x: RecI::def()};
+
+  for prec in proto.children() {
+    for attr in prec.attributes(){
+      match  attr.name(){
+        "type" => {},
+        "minimum" => {},
+        "maximum" => {},
+        "precision" => {},
+         _ => println!("Unknown fruit"),
+      }
+      println!("{:?}", attr.name());
+    }
+    let tag =  prec.tag_name().name();
+    match tag {
+      "cartesianX" => {this_rec.x.first =100;  this_rec.x.last = 200;},
+      "cartesianY" => println!("This is an apple"),
+      "cartesianZ" => println!("This is an apple"),
+      "cartesianInvalidState"  => println!("This is an apple"),
+      _ => {},
+    }
+  }
+   
   let ret_job = PageJob {
     exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
+      let mut my_rec : &Record = &this_rec;
       _pcl.message( &format!("numverts={}", recs));
       return vec![( PageJob::empty(),JobData::empty())];//stop
      })),
@@ -152,10 +188,10 @@ fn parse_xml_job(xml :String)-> Vec<(PageJob,JobData)>{
     let Some(proto) = pt_node.children().find(|n| n.has_tag_name("prototype")) else{
       continue;
     };
-    for prec in proto.children() {
-      println!("{:?}", prec.tag_name().name());
-    }
-    let vjob = parse_verts_job(ofst,recs);
+    //for prec in proto.children() {
+     // println!("{:?}", prec.tag_name().name());
+   // }
+    let vjob = parse_verts_job(ofst,recs,proto);
     for v in vjob{
       jvec.push(v);
     }
