@@ -6,6 +6,7 @@ use crc32c::crc32c;
 
 use roxmltree::{Document, Node};
 use std::collections::VecDeque;
+use std::ops::Range;
 
 const PAGE_SIZE: u64 = 1024;
 
@@ -26,6 +27,7 @@ impl JobData{
   }
 
   fn create(ofst : u64) -> Self {
+    println!("job ofst = {}",ofst);
     Self { 
       read_start: (ofst/PAGE_SIZE)*PAGE_SIZE, 
       read_size: PAGE_SIZE, 
@@ -34,6 +36,18 @@ impl JobData{
       acc:Vec::new(),
       is_done:true     
     } 
+  }
+
+  fn get_f32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
+    let  tbits : Range<usize> = bits.start..bits.end;
+    let ret = f32::from_le_bytes(data[tbits].try_into().expect("a"));
+    println!("ret = {}",ret);
+    return ret;
+  }
+
+  fn get_int_def(bits :Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> i32 {
+    let ret = i32::from_le_bytes(data[bits].try_into().expect("a"));
+    return ret;
   }
 }
 
@@ -117,44 +131,68 @@ impl crate::readers::Seqreader  for E57{
 /////////////// Jobs ////////////////////////////
 fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobData)>{
   struct RecI{
-    first:u32,
-    last:u32
+    brange : Range<usize>,
+    get_val: fn(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32,
   }
+
   impl RecI{
     fn def() -> Self{
-      Self{first:0 , last :0}
+      Self{brange:(0..0), get_val: JobData::get_f32_def}
     }
   }
-  struct Record{
-    x:  RecI
-  }
-  let mut this_rec = Record{x: RecI::def()};
 
+  struct Record{
+    x: RecI,
+    y: RecI,
+    z: RecI,
+    e: RecI
+  }
+  let mut this_rec = Record{x: RecI::def(),y: RecI::def(), z: RecI::def(), e:RecI::def()};
+
+  let mut fbit: usize = 0;
   for prec in proto.children() {
-    for attr in prec.attributes(){
-      match  attr.name(){
-        "type" => {},
-        "minimum" => {},
-        "maximum" => {},
-        "precision" => {},
-         _ => println!("Unknown fruit"),
-      }
-      println!("{:?}", attr.name());
-    }
-    let tag =  prec.tag_name().name();
-    match tag {
-      "cartesianX" => {this_rec.x.first =100;  this_rec.x.last = 200;},
-      "cartesianY" => println!("This is an apple"),
-      "cartesianZ" => println!("This is an apple"),
+    let mut curr = &mut this_rec.e;
+    match  prec.tag_name().name() {
+      "cartesianX" => curr = &mut this_rec.x,
+      "cartesianY" => curr = &mut this_rec.y,
+      "cartesianZ" => curr = &mut this_rec.z,
       "cartesianInvalidState"  => println!("This is an apple"),
       _ => {},
     }
+     
+    //for attr in prec.attributes(){
+      if let Some(v_type) = prec.attribute("type") {
+        //println!("{} {}", attr.name(), v_type);
+        match v_type{
+          "Float" => {
+            if let Some(v_precision) = prec.attribute("precision") {
+              if v_precision == "single" {
+                curr.get_val = JobData::get_f32_def;
+                curr.brange = fbit..fbit+4 ;
+                fbit = fbit + 4;
+              }
+            }
+          },
+          "Integer" => {
+           if let ( Some(v_min), Some(v_max)) = (prec.attribute("minimum"), prec.attribute("maximum")) {
+              let vmin :u64 = v_min.parse().unwrap();
+              let vmax :u64 = v_max.parse().unwrap();
+              fbit = fbit + 1;
+            }
+          },
+           _ => println!("Unknown type"),
+        }
+      }
+    //}
   }
    
   let ret_job = PageJob {
-    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, _pcl: &mut PCloud| {
-      let mut my_rec : &Record = &this_rec;
-      _pcl.message( &format!("numverts={}", recs));
+    exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, pcl: &mut PCloud| {
+      let bit_in_rec = fbit;
+      let x = (this_rec.x.get_val)(&this_rec.x.brange, 1.0, 1.0,pagedata);
+      let y = (this_rec.y.get_val)(&this_rec.y.brange, 1.0, 1.0,pagedata);
+      let z = (this_rec.z.get_val)(&this_rec.z.brange, 1.0, 1.0,pagedata);
+      pcl.add_point(x, y, z, 0);
       return vec![( PageJob::empty(),JobData::empty())];//stop
      })),
   }; 
@@ -217,7 +255,7 @@ fn make_xml_read_job(xml_ofst:u64, xml_size:u64)-> Vec<(PageJob,JobData)> {
       
       let xml_vec = jobdata.acc.clone();
       let s = String::from_utf8(xml_vec).unwrap();
-      //println!("{}",s);
+      println!("{}",s);
       parse_xml_job(s)  
     }))
   };
