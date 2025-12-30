@@ -39,15 +39,32 @@ impl JobData{
   }
 
   fn get_f32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
-    let  tbits : Range<usize> = bits.start..bits.end;
+
+    ////////////////////
+    //let f: f32 = 3.1415;
+    //let bt = f.to_le_bytes();
+    //let tst = f32::from_le_bytes(bt[0..4].try_into().expect("a"));
+    //println!("tst = {}",tst);
+    ///////////////
+    //for bt in data {
+    //  print!("{:02X} ", bt);
+    //}
+
+    let  tbits : Range<usize> = bits.start/8..bits.end/8;
     let ret = f32::from_le_bytes(data[tbits].try_into().expect("a"));
     println!("ret = {}",ret);
+    //println!("{:.4}", ret);
     return ret;
   }
 
-  fn get_int_def(bits :Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> i32 {
-    let ret = i32::from_le_bytes(data[bits].try_into().expect("a"));
-    return ret;
+  fn get_i32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
+    println!("i32 {} {}",bits.start,bits.end);
+    //let ret = i32::from_le_bytes(data[bits].try_into().expect("a"));
+    return 0.0;
+  }
+
+  fn get_noop_def(_bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
+    0.0
   }
 }
 
@@ -116,14 +133,12 @@ impl crate::readers::Seqreader  for E57{
 
   fn next_chunk(&self) -> (u64, u64){
     if let Some(j) = self.jqueue.front() {
-      //println!("{} {}",j.1.read_start, j.1.read_size);
       return (j.1.read_start, j.1.read_size);
     }
     (0,0) 
   }
 
   fn process_bytes(& mut self,data: &Vec<u8>, pcl: &mut PCloud){
-    //pcl.alloc_points(0);
     (self.action)(data, pcl, self);
   }
 }
@@ -134,30 +149,44 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
     brange : Range<usize>,
     get_val: fn(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32,
   }
-
   impl RecI{
-    fn def() -> Self{
-      Self{brange:(0..0), get_val: JobData::get_f32_def}
+    pub fn def() -> Self{
+      Self{brange:(0..0), get_val: JobData::get_noop_def}
     }
   }
 
-  struct Record{
-    x: RecI,
-    y: RecI,
-    z: RecI,
-    e: RecI
+  enum Axis {
+    X = 0,
+    Y = 1,
+    Z = 2,
+    I = 3,
+    E = 4,
+    __Count
   }
-  let mut this_rec = Record{x: RecI::def(),y: RecI::def(), z: RecI::def(), e:RecI::def()};
+  const NUM_ITEMS :usize = Axis::__Count as usize;
+  struct Record{
+    items : [RecI;NUM_ITEMS],
+    num_proc : u64
+  } 
+  impl Record{
+    fn new() -> Self {
+      Self { 
+        items: std::array::from_fn(|_| RecI::def()),
+        num_proc: 0
+      } 
+    } 
+  }
+  let mut this_rec = Record::new();
 
   let mut fbit: usize = 0;
   for prec in proto.children() {
-    let mut curr = &mut this_rec.e;
+    let mut curr = &mut this_rec.items[Axis::E as usize];
     match  prec.tag_name().name() {
-      "cartesianX" => curr = &mut this_rec.x,
-      "cartesianY" => curr = &mut this_rec.y,
-      "cartesianZ" => curr = &mut this_rec.z,
-      "cartesianInvalidState"  => println!("This is an apple"),
-      _ => {},
+      "cartesianX" => curr = &mut this_rec.items[Axis::X as usize],
+      "cartesianY" => curr = &mut this_rec.items[Axis::Y as usize],
+      "cartesianZ" => curr = &mut this_rec.items[Axis::Z as usize],
+      "cartesianInvalidState" => curr = &mut this_rec.items[Axis::I as usize] ,
+      _ => println!(" unknown {}", prec.tag_name().name())
     }
      
     //for attr in prec.attributes(){
@@ -168,8 +197,8 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
             if let Some(v_precision) = prec.attribute("precision") {
               if v_precision == "single" {
                 curr.get_val = JobData::get_f32_def;
-                curr.brange = fbit..fbit+4 ;
-                fbit = fbit + 4;
+                curr.brange = fbit..fbit + 32 ;
+                fbit = fbit + 32;
               }
             }
           },
@@ -177,6 +206,8 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
            if let ( Some(v_min), Some(v_max)) = (prec.attribute("minimum"), prec.attribute("maximum")) {
               let vmin :u64 = v_min.parse().unwrap();
               let vmax :u64 = v_max.parse().unwrap();
+              curr.get_val = JobData::get_i32_def;
+              curr.brange = fbit..fbit + 1 ;
               fbit = fbit + 1;
             }
           },
@@ -188,14 +219,24 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
    
   let ret_job = PageJob {
     exefunc: Some(Box::new(move |pagedata:&Vec<u8>, _j: &mut JobData, pcl: &mut PCloud| {
-      let bit_in_rec = fbit;
-      let x = (this_rec.x.get_val)(&this_rec.x.brange, 1.0, 1.0,pagedata);
-      let y = (this_rec.y.get_val)(&this_rec.y.brange, 1.0, 1.0,pagedata);
-      let z = (this_rec.z.get_val)(&this_rec.z.brange, 1.0, 1.0,pagedata);
-      pcl.add_point(x, y, z, 0);
+      let mut bit_shift = 0;//fbit;
+      loop {
+        let mut rets: [f32; NUM_ITEMS] = [0.0; NUM_ITEMS];
+        for a in 0..NUM_ITEMS {
+          let br :Range<usize> =  this_rec.items[a].brange.start+bit_shift..this_rec.items[a].brange.end+bit_shift;
+          rets[a] = (this_rec.items[a].get_val)(&br, 1.0, 1.0, pagedata);
+        }
+        pcl.add_point(rets[Axis::X as usize], 
+                      rets[Axis::Y as usize],  
+                      rets[Axis::Z as usize], 
+                      0);
+        this_rec.num_proc =  this_rec.num_proc + 1;
+        bit_shift  = bit_shift + fbit;
+      }
       return vec![( PageJob::empty(),JobData::empty())];//stop
-     })),
+    })),
   }; 
+
   return vec![(ret_job, JobData::create(ofst))];
 }
 
