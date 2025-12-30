@@ -37,35 +37,6 @@ impl JobData{
       is_done:true     
     } 
   }
-
-  fn get_f32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
-
-    ////////////////////
-    //let f: f32 = 3.1415;
-    //let bt = f.to_le_bytes();
-    //let tst = f32::from_le_bytes(bt[0..4].try_into().expect("a"));
-    //println!("tst = {}",tst);
-    ///////////////
-    //for bt in data {
-    //  print!("{:02X} ", bt);
-    //}
-
-    let  tbits : Range<usize> = bits.start/8..bits.end/8;
-    let ret = f32::from_le_bytes(data[tbits].try_into().expect("a"));
-    println!("ret = {}",ret);
-    //println!("{:.4}", ret);
-    return ret;
-  }
-
-  fn get_i32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
-    println!("i32 {} {}",bits.start,bits.end);
-    //let ret = i32::from_le_bytes(data[bits].try_into().expect("a"));
-    return 0.0;
-  }
-
-  fn get_noop_def(_bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
-    0.0
-  }
 }
 
 struct PageJob {
@@ -115,7 +86,7 @@ impl E57{
 }
 
 fn read_page(_data: &Vec<u8>, pcl: &mut PCloud,  e57: &mut E57){
-  let real_sz :usize = 1020;
+  //let real_sz :usize = 1020;
   let crc32 = u32::from_le_bytes(_data[1020..1024].try_into().expect("a"));
   let sub_vec = &_data[0..1020];
   let checksum = crc32c(&sub_vec).swap_bytes();
@@ -126,6 +97,9 @@ fn read_page(_data: &Vec<u8>, pcl: &mut PCloud,  e57: &mut E57){
   e57.call_job(_data, pcl);
 }
 
+/*
+  Seqrender trait implementation for E57
+*/
 impl crate::readers::Seqreader  for E57{
   fn start(&self) {
     println!("i-am-e57-start");
@@ -143,7 +117,9 @@ impl crate::readers::Seqreader  for E57{
   }
 }
 
-/////////////// Jobs ////////////////////////////
+/*  
+  Jobs 
+*/
 fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobData)>{
   struct RecI{
     brange : Range<usize>,
@@ -151,7 +127,7 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
   }
   impl RecI{
     pub fn def() -> Self{
-      Self{brange:(0..0), get_val: JobData::get_noop_def}
+      Self{brange:(0..0), get_val: get_noop_def}
     }
   }
 
@@ -186,6 +162,7 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
       "cartesianY" => curr = &mut this_rec.items[Axis::Y as usize],
       "cartesianZ" => curr = &mut this_rec.items[Axis::Z as usize],
       "cartesianInvalidState" => curr = &mut this_rec.items[Axis::I as usize] ,
+      "" =>{},
       _ => println!(" unknown {}", prec.tag_name().name())
     }
      
@@ -196,7 +173,7 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
           "Float" => {
             if let Some(v_precision) = prec.attribute("precision") {
               if v_precision == "single" {
-                curr.get_val = JobData::get_f32_def;
+                curr.get_val = get_f32_def;
                 curr.brange = fbit..fbit + 32 ;
                 fbit = fbit + 32;
               }
@@ -206,7 +183,7 @@ fn parse_verts_job(ofst :u64, recs:u64, proto:Node<'_, '_>) -> Vec<(PageJob,JobD
            if let ( Some(v_min), Some(v_max)) = (prec.attribute("minimum"), prec.attribute("maximum")) {
               let vmin :u64 = v_min.parse().unwrap();
               let vmax :u64 = v_max.parse().unwrap();
-              curr.get_val = JobData::get_i32_def;
+              curr.get_val = get_i32_def;
               curr.brange = fbit..fbit + 1 ;
               fbit = fbit + 1;
             }
@@ -324,7 +301,36 @@ pub fn make_new_e57() -> Box<dyn  crate::readers::Seqreader> {
   e57
 }
 
+/*
+  Utils 
+*/
+fn from_stream(bits :&Range<usize>, data_in: &Vec<u8>, data_out: &mut Vec<u8>) {
+  let lbit = bits.start >>3;
+  let lshift = (bits.start & 7) as u8;
+  let lmsk  =  !lshift;
+  println!("lshift={:b} lmsk={:b}", lshift,lmsk);
+}
 
+fn get_f32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
+  println!("get_f32_def: {} {}",bits.start, bits.end);
+  let mut data_out: Vec<u8> = vec![0u8; 4];
+  from_stream(bits, data, &mut data_out);
+  let  tbits : Range<usize> = bits.start/8..bits.end/8;
+  let ret = f32::from_le_bytes(data[tbits].try_into().expect("a"));
+  println!("ret = {}",ret);
+  //println!("{:.4}", ret);
+  return ret;
+}
+
+fn get_i32_def(bits :&Range<usize>, _scale :f32, _shift:f32, data: &Vec<u8> ) -> f32 {
+  println!("i32 {} {}",bits.start,bits.end);
+  //let ret = i32::from_le_bytes(data[bits].try_into().expect("a"));
+  return 0.0;
+}
+
+fn get_noop_def(_bits :&Range<usize>, _scale :f32, _shift:f32, _data: &Vec<u8> ) -> f32 {
+  0.0
+}
 
 
 
